@@ -1,0 +1,58 @@
+#!/bin/bash
+echo "###   DDDD   HH  HH   CCCC  PPPPP   ###"
+echo "###   DD  D  HH  HH  CC     PP   P  ###"
+echo "###   DD  D  HHHHHH  CC     PPPPP   ###"
+echo "###   DD  D  HH  HH  CC     PP      ###"
+echo "###   DDDD   HH  HH   CCCC  PP      ###"
+P_DATA=`cat /etc/dhcp/dhcp.data | cut -d'#' -f1`
+
+if (test -e /etc/dhcp/.dhcp.data.swp)
+then
+echo "Plik dhcp.data jest nadal edytowany (istnieje plik .dhcp.data.swp), restart wstrzymany" && exit 1
+else
+echo "Regeneruje baze DHCP... "
+rm -f /etc/dhcp/dhcp.leases
+/etc/dhcp/database-regen > /etc/dhcp/dhcp.leases
+#[ $? -ge 0 ] && exit 1
+echo "gotowe."
+
+echo "Regeneruje baze FreeRADIUS... "
+rm -f /etc/freeradius/users.uck
+/etc/dhcp/freeradius-regen > /etc/freeradius/users.uck
+cat /etc/freeradius/orig.users /etc/freeradius/users.* > /etc/freeradius/users
+#[ $? -ge 0 ] && exit 1
+echo -n " ...gotowe."
+
+echo -n "Restart serwera DHCP i FreeRadius? [Enter/Ctrl+C]"
+read
+
+echo  "Restart serwera FreeRADIUS ..."
+echo `/etc/init.d/freeradius stop`
+echo `/etc/init.d/freeradius start`
+echo "BAZA FREERADIUS PRZELADOWANA"
+
+echo `/etc/init.d/isc-dhcp-server stop`
+echo `/etc/init.d/isc-dhcp-server start`
+echo "BAZA ADRESOW ZOSTALA POPRAWNIE WCZYTANA"
+fi
+
+#Synchronizacja z ip
+echo "Synchronizacja z serwerem zafan w toku ..."
+rsync -aH --numeric-ids -e "ssh -p 60022" /etc/dhcp/dhcp.data xx@ip:/etc/dhcp/dhcp.data_new
+rsync -aH --numeric-ids -e "ssh -p 60022" /etc/dhcp/dhcpd.conf xx@ip:/etc/dhcp/dhcpd.conf_new
+rsync -aH --numeric-ids -e "ssh -p 60022" /etc/freeradius/users* xx@ip:/etc/freeradius/
+ssh -p 60022 xx@ip "sudo /etc/dhcp/sync_dhcp"
+echo "Synchronizacja z serwerem zakonczona"
+exit 0
+
+#sync_dhcp
+##!/bin/bash
+#cd /etc/dhcp/
+#cat ./dhcp.data_new > ./dhcp.data
+#cat ./dhcpd.conf_new > ./dhcpd.conf
+#P_DATA=`cat /etc/dhcp/dhcp.data | cut -d'#' -f1`
+##Regeneracja bazy dhcp
+#rm -f /etc/dhcp/dhcp.leases
+#/etc/dhcp/database-regen > /etc/dhcp/dhcp.leases
+##Restart freeradiusa
+#/etc/init.d/freeradius restart
